@@ -521,9 +521,13 @@ async def delete_socie(id: str):
     if socie:
         await socie_collection.delete_one({"_id": ObjectId(id)})
         return True
+
+
+
+
 Rutas de CRUD
 Agregaremos las rutas para completar las operaciones en el archivo de la base de datos.
-En la carpeta “routes” crear un archivo nuevo llamado sociess.py y agregar el siguiente contenido:
+En la carpeta “routes” crear un archivo nuevo llamado socie.py y agregar el siguiente contenido:
 from fastapi import APIRouter, Body
 from fastapi.encoders import jsonable_encoder
 
@@ -577,6 +581,9 @@ De esta forma la ruta espera una carga que sea igual en el formato en studentSch
 Si hicimos los cambios con el contenedor de la api levantado, chequear que todo siga andando con docker ps
 Y nuestra Api debería verse así
 /images/api_socies_03.png
+
+##########################################<<TODO BIEN HASTA AQUI 1>>#############################################
+
 y si probamos crear algo así
 Entonces, cuando un request es enviado al endpoint, antes de llamar a método de la base de dato add_socie, se guarda en la variable socie un valor encodeado como JSON y se guarda la respuesta en la variable new_socie. La respuesta de la base de datos es luego devuelta via ResponseModel
 
@@ -601,6 +608,8 @@ async def get_socie_data(id):
 Buen momento para commitear.
 git add .
 git commit -m "Método Create y Read agregados"
+
+
 Update y Delete
 Ahora escribiremos la ruta individual para actualizar los datos de un socie. Este es el caso con la primer versión del Schema
 
