@@ -1,0 +1,671 @@
+https://alvarmaciel.gitlab.io/cyberiada/post/2021-12-29-crud-con-fastapi-mongodb-y-docker/
+
+Dominio
+La Mutual Personas nos pidió hacer un sistema para registrar los socios. A nosotres nos toca hacer la api, mientras una compañera realizará el frontend que consumirá esa API. Los datos que necesitan registrar son:
+
+Nombre
+
+Apellido
+
+DNI
+
+Nro de socie
+
+Email
+
+Teléfono
+
+Dirección
+
+Codigo Postal
+
+Socio Pleno o General
+
+El número de socio está compuesto por un número.
+
+El socio puede ser Pleno o General, no ambos al mismo tiempo
+
+#######################################################################################################################################
+
+Configurando el entorno y el estado inicial de la API
+El desarrollo lo llevaré a cabo en la carpeta api-socies esta carpeta será la raíz de un repositorio git en el cual iremos desarrollando toda la API. Este es el resultado final del proyecto en su primer versión
+
+api-socies
+├── app
+│   ├── Dockerfile
+│   ├── __init__.py
+│   ├── main.py
+│   ├── requirements.txt
+│   └── server
+│       ├── app.py
+│       ├── database.py
+│       ├── models
+│       │   └── socie.py
+│       └── routes
+│           └── socie.py
+├── docker-compose.yml
+└── README.md
+
+#####################################################################################################################################
+
+Instalando Docker
+Dado que utilizo GNU/Linux, las instrucciones y los links serán para este Sistema Operativo.
+
+Sigan las instrucciones para instalar la community edition de Docker. Pueden encontrarlas acá
+
+Después de tener instalado docker sigan los Pasos post-instalacion para linux. Estos pasos permiten usar docker sin tener que anteponer sudo en cada comando.
+
+Para finalizar, instalar docker-compose. Siguiendo estas instrucciones
+
+Asegúrense de que docker está correctamente configurado en sus máquinas corriendo el siguiente comando:
+
+docker run hello-world
+
+Hello from Docker!
+This message shows that your installation appears to be working correctly.
+
+To generate this message, Docker took the following steps:
+ 1. The Docker client contacted the Docker daemon.
+ 2. The Docker daemon pulled the "hello-world" image from the Docker Hub.
+    (amd64)
+ 3. The Docker daemon created a new container from that image which runs the
+    executable that produces the output you are currently reading.
+ 4. The Docker daemon streamed that output to the Docker client, which sent it
+    to your terminal.
+
+To try something more ambitious, you can run an Ubuntu container with:
+ $ docker run -it ubuntu bash
+
+Share images, automate workflows, and more with a free Docker ID:
+ https://hub.docker.com/
+
+For more examples and ideas, visit:
+ https://docs.docker.com/get-started/
+Si usaron docker previamente, tal vez quieran remover las imágenes viejas o sin usar. Esto lo pueden hacer con los siguientes comandos
+
+docker system prune
+docker rmi $(docker images -f "dangling=true" -q)
+docker rmi $(docker images -a -q)
+docker rm $(docker ps --filter=status=exited --filter=status=created -q)
+
+
+##########################################################################################################
+GIT
+Crearemos un nuevo directorio, este directorio contendrá el repositorio local que mantendremos en GitLab.
+
+mkdir api-socies
+cd api-socies
+Luego inicializaremos el repositorio
+
+git init
+Nuestro código vivirá de forma local en nuestra máquina y de forma remota en GitLab pero a los fines prácticos de este tutorial, por ahora no vamos a conectar el local con el remoto.
+
+Inicializaremos el repositorio y crearemos un archivo README.md
+
+git init
+echo "## API de Mutual PERSONAS" >> README.md
+Luego agregamos el archivo recién creado al stage para confirmar los cambios en el repositorio, de esta manera, ya con un commit realizado podemos empezar a armar las ramas de nuestro repo.
+
+git add README.md
+git commit -m "Comit Incial"
+[main (commit-raíz) 566da56] Comit Incial
+ 1 file changed, 1 insertion(+)
+ create mode 100644 README.md
+#+end
+
+
+Este proyecto intenta adherirse a las prácticas descriptas [[https://nvie.com/posts/a-successful-git-branching-model/][acá]]
+
+Empezaremos creando una rama =develop=, y luego agregaremos la rama donde construiremos la aplicación con FastAPI dockerizada
+
+#+begin_src bash
+git branch develop
+git checkout -b fastapiapp develop
+git branch
+  develop
+  * fastapiapp
+  main
+Setup de docker-compose y estod inicial de la API
+Ahora vamos a agregar una serie de archivos para dejar el estado inicial de los contenedores activos.
+
+Levantaremos dos contenedores para nuestra app, en uno vivirá la aplicación y en otro la base de datos, para eso usamos docker-compose.
+
+En nuestro directorio raíz agregamos el siguiente archivo docker-compose.yml:
+
+version: '3.8'
+
+services:
+  api:
+    build: ./app
+    volumes:
+      - .:/code
+    ports:
+      - '8000:8000'
+    environment:
+      - DB_URL=mongodb://db//myTestDB
+    depends_on:
+      - db
+  db:
+    image: mongo
+    ports:
+      - 27017:27017
+    volumes:
+      - taskdb:/data/db
+
+volumes:
+    taskdb:
+
+
+
+Este archivo indica a Docker como realizar algunas de las tareas que necesitamos. Veamos este archivo por partes:
+
+Dentro de services declaramos los servicios que vamos a levantar:
+api: nombre del servicio
+buid: lugar donde buscar el archivo *Dockerfile+ para construir el contenedor
+volumes: Indicamos que construya el contenedor con los datos del directorio donde estara Dockerfile (todavía no lo creamos) y que guarde esos datos en el contendero dentro de la carpeta /code
+ports: Con este comando indicamos que puentee el puerto 8000 de nuestro contenedor al puerto 8000 de nuestra máquina (host)
+environment: define una variable para conectarse con la base de datos
+depends_on: indica que necesita que está corriendo el contenedor de la base de datos para correr la app
+db: nombre del servicio de la base de datos
+image: la imagen que vamos a usar, en este caso no necesitamos meternos en los detalles de la configuración de la base, lo haremos todo desde la app, por lo cual usamos una imagen
+ports: Igual que antes, conectamos los ports del contenedor con el host
+volumes: Indicamos unos volúmenes para poder tener persistencia de los datos de la Base de Datos
+Ahora vamos a empezar a crear nuestra app propiamente dicha. Para eso primero creamos un directorio donde agregaremos los archivos necesarios para iniciarla la API, iniciar el contenedor y los requerimientos.
+
+$ mkdir app
+$ cd app
+Dentro de app crearemos el archivo Dockerfile con los elementos para que levante nuestro contenedor
+
+dockerfile
+# Pull de la imagen base oficial
+FROM python:3.9.6-alpine
+
+
+# setup del directorio de trabajo
+WORKDIR /code
+
+# Configuración de las variables de ambiente
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+
+
+RUN pip install --upgrade pip
+COPY requirements.txt /code/
+RUN pip install -r requirements.txt
+
+
+COPY . ./code/
+
+ENTRYPOINT python app/main.py
+Agregamos los requerimientos de nuestro proyecto, para eso creamos el archivo app/requirements.txt con el siguiente contenido:
+
+requeriments.txt
+fastapi == 0.70.1
+uvicorn == 0.16.0
+pydantic[email]
+motor == 2.5.1
+Ahora solo nos queda crear los archivos que iniciarán la aplicación.
+
+Dentro del directorio app crearemos un archivo llamado __init__.py vacio y uno main.py
+
+__init__.py
+touch __init__.py
+main.py
+import uvicorn
+
+if __name__ == "__main__":
+    uvicorn.run("server.app:app", host="0.0.0.0", port=8000, reload=True)
+En main.py definimos el entrypoint donde correrá la aplicación
+uvicorn es el servidor que correrá en el puerto 8000 y se recargará con cada cambio en los archivos
+Luego veremos para que es cada línea. Basta con saber que lo que hará es instalar en el ambiente que crea Docker las librerías FastAPI, Uvicorn, de Pydantic el módulo Email y la librería Motor
+
+Antes de arrancar la app, es necesario crear las rutas o routes. Esto es: definir en la app, en que patrón de url se servirá.
+Creamos el directorio server dentro de app
+mkdir server
+dentro del directorio server creamos el archivo app.py con el siguiente contenido
+
+app.py
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/", tags=['root'])
+async def read_root():
+    return {"message": "Bienvenides a esta fantástica aplicación"}
+Esto es lo que hace el archivo línea a línea
+
+Delineado:
+Importa el módulo FastApi de fastapi
+Instancia el objeto app de la clase FastApi
+Utiliza un decorador para el objeto app llamando al método get que hace que las solicitudes GET a localhost:8000/ se respondan como defino en la función que estoy decorando. Además le pone una etiqueta “root” que se usan para identificar a las rutas, las rutas con las mismas etiquetas se agrupan en al misma sección de la API
+Creo la función read_root() que me devuelve un mensaje de bienvenida
+Nuestro proyecto por ahora se estructura de la siguiente forma
+
+.api-socies # Directorio raíz iniciado con git
+├── app # Directorio de nuestra aplicación
+│   ├── Dockerfile # Reglas para construir el contenedor de la API
+│   ├── __init__.py #
+│   └── requirements.txt # Requerimientos necesarios para que corra la app
+│   └── server # Directorio donde estarán los archivos principales de la app
+│       └── app.py
+├── docker-compose.yml # Reglas para levantar los contenedores de la api y la base de datos
+└── README.md # Archivo con detalles del proyecto (Solo un título por ahora)
+Como último paso de esta etapa, volvemos al directorio raíz y construimos la imagen
+
+$ docker-compose build
+Una vez que la imagen está construida la levantamos
+
+$ docker-compose up -d
+y chequeamos que podemos ver la página de bienvenida de la API en http://localhost:8000
+
+/images/api_01.png
+Pueden chequear la doc de la API con los endpoints presentes en http://localhosts:8000/docs
+
+/images/api_02.png
+También pueden ver los contenedores levantados con docker ps
+
+docker ps
+CONTAINER ID   IMAGE            COMMAND                  CREATED         STATUS         PORTS                                           NAMES
+5b57fcb599f5   api-socies_api   "/bin/sh -c 'python …"   2 minutes ago   Up 2 minutes   0.0.0.0:8000->8000/tcp, :::8000->8000/tcp       api-socies_api_1
+87a0adc44768   mongo            "docker-entrypoint.s…"   3 hours ago     Up 3 hours     0.0.0.0:27017->27017/tcp, :::27017->27017/tcp   api-socies_db_1
+Si por alguna razón no ven el inicio de la API, pueden chequear los logs con docker-compose logs -f.
+
+Para cerrar esta etapa, con la API levantada. Es un buen momento para crear el archivo .gitignore en nuestro repo, para que no trackee ni suba al repositorio remoto algunos de los archivos que no queremos públicos, o que no son necesarios. Copiar este contenido en .gitignore
+
+__pycache__
+*.pyc
+
+# si usan vscode o pycharm agregar
+.vscode
+.idea
+Ahora stageamos y commiteamos. Cuando hacemos git add . estamos cambiando el estado de seguimiento y registro de todos los archivos menos los que están en .gitignore ahora git seguirá los cambios en estos archivos. Con git commit -m "acá un mensaje" estamos confirmando los cambios registrados en esos archivos. Vamos a registrar, stagear los archivos que creamos y a commitearlos.
+
+git add .
+git commit -m "api basica creada"
+Próximo paso, programar los métodos GET, PUT, UPDATE y DELETE de la API y conectar la base de datos.
+
+Planeando las Rutas
+Es importante planear la API una obviedad que no siempre es tan obvia.
+Entonces, para esta prueba vamos tener el siguiente esquema.
+Root
+
+Método	Ruta	Descripcion
+GET	/	Leer Root
+Socies
+
+Método	Ruta	Descripcion
+GET	socies	Leer Socies
+POST	socies	Agregar Socies Data
+GET	/socies/{id}	Leer Socie por ID
+PUT	/socies/{id}	Actualizar Datos de Socie por ID
+DELETE	/socies/{id}	Borrar Datos de Socie por ID
+Escribiendo el Schema 1
+Definiremos el Schema en el cual se basaran nuestros datos, y que representará como se guardarán los datos en la base de datos MongoDB
+Vamos a usar Pydantic que permite la creación de Schemas JSON para los modelos y para validar los datos junto con la serilización (JSON -> Python) y viceversa.
+Creamos la carpeta models En app/server" y dentro de ella creamos un archivo socie.py para nuestro modelo de socios.
+from typing import Optional
+
+from pydantic import BaseModel, EmailStr, Field, constr, conint
+
+
+class SchemaDeSocie(BaseModel):
+    nombre: constr(strict=True) = Field(...)
+    apellido: constr(strict=True) = Field(...)
+    dni: conint(strict=True) = Field(...)
+    nro_socie: conint(strict=True, gt=0) = Field(...)
+    email: EmailStr = Field(...)
+    telefono: constr(strict=True) = Field()
+    direccion: constr(strict=True) = Field()
+    codigo_postal: constr(strict=True) = Field()
+    tipo_socio: bool = Field()
+
+    class config:
+        schema_extra = {
+            "ejemplo": {
+                "nombre": "Juana",
+                "apellido": "Pilo",
+                "dni": 27358783,
+                "nro_socie": 1234,
+                "email": "jpilo@x.ar",
+                "telefono": "+54 9 456789",
+                "direccion": "calle pública S/n",
+                "codigo_postal": "5823",
+                "tipo_socio": True,
+            }
+        }
+
+
+class UpdateSocieModel(BaseModel):
+    nombre: Optional[constr(strict=True)]
+    apellido: Optional[constr(strict=True)]
+    dni: Optional[conint(strict=True)]
+    nro_socie: Optional[conint(strict=True, gt=0)]
+    email: Optional[EmailStr]
+    telefono: Optional[constr(strict=True)]
+    direccion: Optional[constr(strict=True)]
+    codigo_postal: Optional[constr(strict=True)]
+    tipo_socio: Optional[bool]
+
+    class Config:
+        schema_extra = {
+            "ejemplo": {
+                "nombre": "Juana",
+                "apellido": "Pilo",
+                "dni": 27358783,
+                "nro_socie": 1234,
+                "email": "jpilo@x.ar",
+                "telefono": "+54 9 456789",
+                "direccion": "calle pública S/n",
+                "codigo_postal": "5823",
+                "tipo_socio": True,
+            }
+        }
+
+
+def ResponseModel(data, message):
+    return {
+        "data": [data],
+        "code": 200,
+        "message": message,
+    }
+
+
+def ErrorResponseModel(error, code, message):
+    return {"error": error, "code": code, "message": message}
+en SchemaDeSocie definimos un Schema Pydantic que representa como se guardarán los datos en la Base.
+Gracias a Facundo Padilla que revisó el artículo, cada definición de field en el schema está usando constr o conint para la definición de tipo de campo. De esta forma podemos asegurarnos que en el JSON nos pasen string o int cada vez que lo necesitamos. Como dijo Facundo
+en la parte de los schemas, no te conviene utilizar str, porque si te envian un “123” o un 123 en el json, para FastAPI es lo mismo, si estrictamente queres que sea un string, de pydantic tenes que importar
+
+En Pydantic los ... se denominan ellipsis y esto quiere decir que este es un campo requerido. Se puede remplazar con None o un valor por default. En este esquema solo algunos campos son importantes. El programa no podrá avanzar sin tener estos valores seteados.
+Este esquema se asegura de que los usuarios pasen HTTP request con la forma apropiada a la API.
+Vamos a tener que agregar el validador de email ya que usamos EmailStr por eso era necesaria en requirements.tx pydantic[email].
+Terminamos una etapa, y hacemos commitiamos el proyecto
+git add .
+git commit -m "api Schema Socies creado"
+Escribiendo el Schema 2 y de que va eso de Optional y como resumirlo
+Esta es una actualización aportada por Facundo Padilla. En nuestro Schema anterior, tenemos dos clases SchemaDeSocie y UpdateSocieModel El primero define el Schema de nuestro modelo de socies, los campos requeridos y es validado y utilizado por el método POST en las rutas. El segundo se utiliza cuando en la rutas llamamos al métod PUT para hacer una actualización. En él definimos de nuevo los campos, esta vez como Optional, esto le dice al chequeador de typos que este campo específico es requerido o que al menos tendrá un valor None Por eso es la misma estructura pero con Optional al inicio de las definiciones de tipos. Facundo aportó una forma para no tener que escribir repetidas veces los mismo, y es crear dinámicamente esta clase UpdateSocieModel a partir de SchemaDeSocie cada vez que sea necesario usarla. Nuestro código en models/socie.py quedaría así:
+
+from typing import Optional
+
+from pydantic import BaseModel, EmailStr, Field, constr, conint, create_model
+
+
+class SchemaDeSocie(BaseModel):
+    nombre: constr(strict=True) = Field(...)
+    apellido: constr(strict=True) = Field(...)
+    dni: conint(strict=True) = Field(...)
+    nro_socie: conint(strict=True, gt=0) = Field(...)
+    email: EmailStr = Field(...)
+    telefono: constr(strict=True) = Field(None)
+    direccion: constr(strict=True) = Field(None)
+    codigo_postal: constr(strict=True) = Field(None)
+    tipo_socio: bool = Field(...)
+
+    class config:
+        schema_extra = {
+            "ejemplo": {
+                "nombre": "Juana",
+                "apellido": "Pilo",
+                "dni": 27358783,
+                "nro_socie": 1234,
+                "email": "jpilo@x.ar",
+                "telefono": "+54 9 456789",
+                "direccion": "calle pública S/n",
+                "codigo_postal": "5823",
+                "tipo_socio": True,
+            }
+        }
+
+    @classmethod
+    def as_optional(cls):
+        annonations = cls.__fields__
+        fields = {
+            attribute: (Optional[data_type.type_], None)
+            for attribute, data_type in annonations.items()
+        }
+        OptionalModel = create_model(f"Optional{cls.__name__}", **fields)
+        return OptionalModel
+
+
+def ResponseModel(data, message):
+    return {
+        "data": [data],
+        "code": 200,
+        "message": message,
+    }
+
+
+def ErrorResponseModel(error, code, message):
+    return {"error": error, "code": code, "message": message}
+importamos create_model para la creación dinámica de modelos
+La función as_optional devuelve un modelos generado dinámicamente al recorres cada atributo de la clase SchemaDeSocie creando un diccionario fields con los atributos y los typos correspondientes y el agregado del Optional.
+Además tendremos que modificar la rutas del CRUD pero eso lo vemos maś adelante en Update y Delete
+
+MongoDB
+Motor Setup
+Vamos a configurar Motor un driver asincrónico de MongoDB para interactuar con la base de datos
+Las dependencias ya están agregadas en requirements.txt en la línea motor==2.5.1
+Ahora agregamos la información de conexión a app/server/database.py
+import os
+import motor.motor_asyncio
+from bson.objectid import ObjectId
+
+
+client = motor.motor_asyncio.AsyncIOMotorClient(os.environ["DB_URL"])
+
+database = client.socies
+
+socie_collection = database.get_collection("socies_collections")
+Importamos os para poder pasarle la variable de ambiente de la base de datos que tenemos en docker-compose
+Importamos motor
+Importamos el método objectid del paquete bson. Esta es una dependencia de Motor
+Definimos los detalles de conexión y creamos un cliente vía AsyncIOMotorClient
+Luego asignamos la variable database a una base de datos llamada socies y socie_collection a una colección de la base de datos llamada socies_collections. Dado que son solo referencias y no operaciones de E/S, no requieren una expresión await. Cuando se realice la primer operación de E/S, ambas, la base de datos y la colección serán creadas si es que no existen.
+Luego, creamos una función de ayuda rápida para pasar los resultados de una query a la base de datos a un diccionario de Python.
+# helpers
+
+def socie_helper(socie) -> dict:
+    return {
+        "id": str(socie["_id"]),
+        "nombre": socie["nombre"],
+        "apellido": socie["apellido"],
+        "dni": str(socie["dni"]),
+        "nro_socie": str(socie["nro_socie"]),
+        "email": socie["email"],
+        "telefono": socie["telefono"],
+        "codigo_postal": socie["codigo_postal"],
+        "tipo_socio": socie["tipo_socio"]
+    }
+Operaciones CRUD en la base de datos
+Ahora agregamos las funciones para las operaciones del CRUD
+
+# Buscar todes les socies de la base de datos
+async def retrieve_socies():
+    socies = []
+    async for socie in socie_collection.find():
+        socies.append(socie_helper(socie))
+    return socies
+
+# Agregar un socie a la base de datos
+
+async def add_socie(socie_data: dict) -> dict:
+    socie = await socie_collection.insert_one(socie_data)
+    new_socie = await socie_collection.find_one({"_id": socie.inserted_id})
+    return socie_helper(new_socie)
+
+# Buscar un socie a partir de un ID
+async def retrieve_socie(id: str) -> dict:
+    socie = await socie_collection.find_one({"_id": ObjectId(id)})
+    if socie:
+        return socie_helper(socie)
+
+
+# Actulizar un socie a partir de un ID
+async def update_socie(id: str, data: dict):
+    # Devuelve falso si el cuerpo del request está vacio
+    if len(data) < 1:
+        return False
+    socie = await socie_collection.find_one({"_id": ObjectId(id)})
+    if socie:
+        updated_socie = await socie_collection.update_one(
+            {"_id": ObjectId(id)}, {"$set": data}
+        )
+        if updated_socie:
+            return True
+        return False
+
+# Borrar un socie de la base de datos
+async def delete_socie(id: str):
+    socie = await socie_collection.find_one({"_id": ObjectId(id)})
+    if socie:
+        await socie_collection.delete_one({"_id": ObjectId(id)})
+        return True
+Rutas de CRUD
+Agregaremos las rutas para completar las operaciones en el archivo de la base de datos.
+En la carpeta “routes” crear un archivo nuevo llamado sociess.py y agregar el siguiente contenido:
+from fastapi import APIRouter, Body
+from fastapi.encoders import jsonable_encoder
+
+from server.database import (
+    add_socie,
+    delete_socie,
+    retrieve_socie,
+    retrieve_socies,
+    update_socie,
+)
+from server.models.socie import (
+    ErrorResponseModel,
+    ResponseModel,
+    SchemaDeSocie,
+    UpdateSocieModel,
+)
+
+router = APIRouter()
+Usamos JSON Compatible Encoder de FastAPI para convertir nuestros modelos en un formato compatible con JSON
+Ahora agregamos la ruta socie a nuestra app en app/server/app.py
+from fastapi import FastAPI
+
+from server.routes.socie import router as SocieRouter
+
+app = FastAPI()
+
+app.include_router(SocieRouter, tags=["Socie"], prefix="/socie")
+
+@app.get("/", tags=['root'])
+async def read_root():
+    return {"message": "Bienvenides a esta fantástica aplicación"}
+Create
+Volviendo al archivo de rutas, agregamos el siguiente código para crear nuevos socies:
+@router.post("/", response_description="Datos de socie agregados ala base de datos")
+async def add_socie_data(socie: SchemaDeSocie = Body(...)):
+    socie = jsonable_encoder(socie)
+    new_socie = await add_socie(socie)
+    return ResponseModel(new_socie, "Socie agregado.")
+De esta forma la ruta espera una carga que sea igual en el formato en studentSchema
+{
+  "nombre": "Juana",
+  "apellido": "Pilo",
+  "dni": 27358783,
+  "nro_socie": 1234,
+  "email": "jpilo@x.ar",
+  "telefono": "+54 9 456789",
+  "direccion": "calle pública S/n",
+  "codigo_postal": "5823",
+  "tipo_socio": True,
+}
+Si hicimos los cambios con el contenedor de la api levantado, chequear que todo siga andando con docker ps
+Y nuestra Api debería verse así
+/images/api_socies_03.png
+y si probamos crear algo así
+Entonces, cuando un request es enviado al endpoint, antes de llamar a método de la base de dato add_socie, se guarda en la variable socie un valor encodeado como JSON y se guarda la respuesta en la variable new_socie. La respuesta de la base de datos es luego devuelta via ResponseModel
+
+Read
+Ahora avanzaremos agregando la ruta para ver retrieve todos los socies y un socie en particular
+
+@router.get("/", response_description="Socies retrieved")
+async def get_socies():
+    socies = await retrieve_socies()
+    if socies:
+        return ResponseModel(socies, "Se consiguieron los datos de les Socies")
+    return ResponseModel(socies, "Vuelvión una lista vacía")
+
+
+@router.get("/{id}", response_description="Dato se socieo recuperado")
+async def get_socie_data(id):
+    socie = await retrieve_socie(id)
+    if socie:
+        return ResponseModel(socie, "Se consiguieron los datos del Socie")
+    return ErrorResponseModel("Ocurrió un error", 404, "El socie no existe.")
+/images/api_socies_05.png
+Buen momento para commitear.
+git add .
+git commit -m "Método Create y Read agregados"
+Update y Delete
+Ahora escribiremos la ruta individual para actualizar los datos de un socie. Este es el caso con la primer versión del Schema
+
+
+@router.put("/{id}")
+async def update_socie_data(id: str, req: UpdateSocieModel = Body(...)):
+    req = {k: v for k, v in req.dict().items() if v is not None}
+    updated_socie = await update_socie(id, req)
+    if updated_socie:
+        return ResponseModel(
+            "Se pudo actualizar el Socie con el ID: {} ".format(id), "Socio Actualizado correctamente"
+        )
+    return ErrorResponseModel(
+        "Ocurrió un error",
+        404,
+        "Hubo una falla actualizando los datos del Socie",
+    )
+Esta es la versión de la ruta con la segunda versión del Schema:
+
+
+@router.put("/{id}")
+async def update_socie_data(id: str, req: SchemaDeSocie.as_optional() = Body(...)):
+    req = {k: v for k, v in req.dict().items() if v is not None}
+    updated_socie = await update_socie(id, req)
+    if updated_socie:
+        return ResponseModel(
+            "Se pudo actualizar el Socie con el ID: {} ".format(id),
+            "Socio Actualizado correctamente",
+        )
+    return ErrorResponseModel(
+        "Ocurrió un error",
+        404,
+        "Hubo una falla actualizando los datos del Socie",
+    )
+Finalmente, la ruta de borrado:
+
+@router.delete("/{id}", response_description="Socie data deleted from the database")
+async def delete_socie_data(id: str):
+    deleted_socie = await delete_socie(id)
+    if deleted_socie:
+        return ResponseModel(
+            "Socie ID: {} borrado".format(id), "Socio Borrado exitosamente"
+        )
+    return ErrorResponseModel(
+        "Hubo un error", 404, "Socio con id {0} no existe".format(id)
+    )
+Buscar el usuario creado anteriormente y testear la ruta de borrado:
+
+/images/api_socies_06.png
+Borren los socies que hayan creado de prueba y chequeen la ruta de lectura otra vez. Asegúrense de que la respuesta es la apropiada para una base de datos vacía.
+
+Buen momento para commitear.
+git add .
+git commit -m "Método Update y Delete agregados"
+Frezado de primer versión
+En este punto, podemos decir que lo más básico de la API está completa. Faltaría agregarle acceso seguro a través de tokens y tener la API desplegada en la web. Pero eso será material de próximos tutoriales (pero no prometo nada) Por lo que vamos a pasar la API a la rama develop y frezzar una primer versión.
+
+git checkout develop
+git merge fastapiapp
+Ahora, sin más que agregar por el momento, también mergeamos la rama develop a main pasando por una rama intermedia que llamaremos version-1.0, luego del merge con main agregamos una etiqueta con el número de versión 1.0.
+
+git checkout -b version-1.0 develop
+git checkout main
+git merge --no-ff version-1.0
+git tag -a 1.0
+Ahora se puede pushear al repo remoto que ustedes quieran.
+
+El próximo paso, probar MongoDB en la nube, conectarlo con la app y desplegarla con Heroku
