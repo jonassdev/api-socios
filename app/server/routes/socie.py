@@ -41,3 +41,30 @@ async def get_socie_data(id):
         return ResponseModel(socie, "Se consiguieron los datos del Socie")
     return ErrorResponseModel("Ocurrió un error", 404, "El socie no existe.")
 
+# UPDATE
+@router.put("/{id}")
+async def update_socie_data(id: str, req: SchemaDeSocie.as_optional() = Body(...)):
+    req = {k: v for k, v in req.dict().items() if v is not None}
+    updated_socie = await update_socie(id, req)
+    if updated_socie:
+        return ResponseModel(
+            "Se pudo actualizar el Socie con el ID: {} ".format(id),
+            "Socio Actualizado correctamente",
+        )
+    return ErrorResponseModel(
+        "Ocurrió un error",
+        404,
+        "Hubo una falla actualizando los datos del Socie",
+    )
+    
+# DELETE
+@router.delete("/{id}", response_description="Socie data deleted from the database")
+async def delete_socie_data(id: str):
+    deleted_socie = await delete_socie(id)
+    if deleted_socie:
+        return ResponseModel(
+            "Socie ID: {} borrado".format(id), "Socio Borrado exitosamente"
+        )
+    return ErrorResponseModel(
+        "Hubo un error", 404, "Socio con id {0} no existe".format(id)
+    )

@@ -607,7 +607,7 @@ Buen momento para commitear.
 git add .
 git commit -m "Método Create y Read agregados"
 
-##########################################<<TODO BIEN HASTA AQUI 3>>#############################################
+##########################################<<TODO BIEN HASTA AQUI Commit 3>>#############################################
 
 Update y Delete
 Ahora escribiremos la ruta individual para actualizar los datos de un socie. Este es el caso con la primer versión del Schema
