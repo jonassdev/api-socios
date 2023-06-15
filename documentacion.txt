@@ -582,8 +582,6 @@ Si hicimos los cambios con el contenedor de la api levantado, chequear que todo 
 Y nuestra Api debería verse así
 /images/api_socies_03.png
 
-##########################################<<TODO BIEN HASTA AQUI 1>>#############################################
-
 y si probamos crear algo así
 Entonces, cuando un request es enviado al endpoint, antes de llamar a método de la base de dato add_socie, se guarda en la variable socie un valor encodeado como JSON y se guarda la respuesta en la variable new_socie. La respuesta de la base de datos es luego devuelta via ResponseModel
 
@@ -609,6 +607,7 @@ Buen momento para commitear.
 git add .
 git commit -m "Método Create y Read agregados"
 
+##########################################<<TODO BIEN HASTA AQUI 3>>#############################################
 
 Update y Delete
 Ahora escribiremos la ruta individual para actualizar los datos de un socie. Este es el caso con la primer versión del Schema

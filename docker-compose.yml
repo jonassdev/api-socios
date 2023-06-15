@@ -11,7 +11,7 @@ services:
       - '8000:8000'
 
     environment:
-      - DB_URL=mongo://db//myTestDB
+      - DB_URL=mongodb://db/myTestDB
 
     depends_on:
       - db

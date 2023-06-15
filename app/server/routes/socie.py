@@ -11,7 +11,7 @@ from server.database import (
 from server.models.socie import (
     ErrorResponseModel,
     ResponseModel,
-    SchemaDeSocie
+    SchemaDeSocie,
 )
 
 router = APIRouter()
@@ -31,7 +31,7 @@ async def get_socies():
     socies = await retrieve_socies()
     if socies:
         return ResponseModel(socies, "Se consiguieron los datos de les Socies")
-    return ResponseModel(socies, "Vuelvión una lista vacía")
+    return ResponseModel(socies, "Devuelvo una lista vacía")
 
 
 @router.get("/{id}", response_description="Dato se socie recuperado")
