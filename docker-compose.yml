@@ -5,7 +5,7 @@ services:
     build: ./app
 
     volumes:
-      - ./code
+      - .:/code
     
     ports:
       - '8000:8000'
